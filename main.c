@@ -35,9 +35,9 @@
 
 
 // uint32_t system_ms = 0; 错误
-volatile uint32_t system_ms = 0;//因为我其实一直都是 电容是用来滤波的 一样的感觉 volatile是防止编译器自作主张的 但其实就像没有用过示波器感受电容带来的差异一样 自作聪明其实很难给我直观感受 所以我不太能确定什么时候需要volatile
+volatile uint32_t system_ms = 0;//主循环之外的地方也会修改 那就要volatile
 
-void SysTick_Init(){//并不是错误的理解成一次循环就是1ms 我应该在某个地方有提到 不清楚怎么实现1ms反馈 特意注释600ms也是告诉 我能理解这里放的应该是什么 不过没理解实现
+void SysTick_Init(){
     DL_SYSTICK_config(CPUCLK_FREQ / 1000U);
 }
 
@@ -49,84 +49,12 @@ uint32_t millis(){
     return system_ms;
 }
 
-bool countdown(uint32_t Delay_ms,uint32_t start_time){
-    start_time = millis();
-    if(millis() - start_time >= Delay_ms) return true;
-    else return false;
-}
-
-typedef enum{
-    none = 0,
-    press,
-    sshort,
-    llong,
-}Btn_STATE;
-
-
-void Enable(GPIO_Regs *gpio, uint32_t pins){
-    DL_GPIO_clearPins(gpio,pins);
-    DL_GPIO_enableOutput(gpio,pins);
-}
 
 void LED_Init(){
-    DL_GPIO_initDigitalOutput(IOMUX_PINCM31);//就是说 这个引脚本身还有机会去被当作pwm tim之类的功能 现在我只是需要gpio 所以开始就声明清楚
-    Enable(GPIOB,DL_GPIO_PIN_14);
+    DL_GPIO_initDigitalOutput(IOMUX_PINCM31);
+    DL_GPIO_clearPins(GPIOB,DL_GPIO_PIN_14);
+    DL_GPIO_enableOutput(GPIOB,DL_GPIO_PIN_14);
 }
-
-
-    uint8_t cur_state = 0,pre_state = 0;
-    uint8_t real_state = none;
-    uint32_t press_time = 0;
-
-uint8_t DeBounce(){
-
-   // if((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) == none))//这样的完全能理解 但是为什么
-    // if ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == none){// & 21是什么操作
-    
-   // cur_state = DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21); 我大概理解了 返回的数据 或者说 readpin替我做的是 把反馈回来的 需要按位运算的过程跳过了 上面的if就是把这个函数做过的给我看到了部分
-//    cur_state = (uint8_t)DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21);//为什么还要！0  既然知道类型不匹配 我有只是需要确认是否按下 直接强制转换一下类型 这样只要不是0 那就是没有按下 接地了 那就一定是0
-//错误 强转和直接用错误的类型赋值一样 把uint32赋值给 uint16会导致32位数据被截断 强转也会 
-    cur_state = (DL_GPIO_readPins(GPIOB,DL_GPIO_PIN_21) != 0U);
-   
-    if(cur_state != pre_state){
-        if(countdown(10,press_time) ){
-            press_time = 0 ;
-            uint8_t temp =  (uint8_t)DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21);
-
-            if(cur_state == temp){                           
-                real_state = temp;
-            }else{
-                real_state = pre_state;
-            }
-            
-        }
-    }
-
-    pre_state = cur_state;
-    return real_state;
-}
-
-uint32_t pressed_time = 0;
-uint32_t release_time = 0;
-
-uint8_t Btn_state(){
-    uint8_t key_state = DeBounce();
-    
-    if(key_state){
-        pressed_time = millis();
-        if(pressed_time - release_time >= 600){
-            key_state = llong;
-        }
-    }else{
-        release_time = millis();
-        if(release_time - pressed_time <= 600){
-            key_state = sshort;
-        }
-    }
-
-    return key_state;
-}
-
 
 void Btn_Init(){
     DL_GPIO_initDigitalInputFeatures(
@@ -138,10 +66,65 @@ void Btn_Init(){
     );
 }
 
+bool pressed = 0;
+
+typedef enum {
+    none = 0,
+    sshort,
+    llong,
+    release
+}Btn_Event;
+
+Btn_Event event;
 
 
-volatile uint32_t cur_t = 0;
+bool erace_Bounce(){
 
+    // if((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) == none))//这样的完全能理解 但是为什么
+    // if ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == none){// & 21是什么操作
+    
+    //cur_state = DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21); 我大概理解了 返回的数据 或者说 readpin替我做的是 把反馈回来的 需要按位运算的过程跳过了 上面的if就是把这个函数做过的给我看到了部分
+    //cur_state = (uint8_t)DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21);//为什么还要！0  既然知道类型不匹配 我有只是需要确认是否按下 直接强制转换一下类型 这样只要不是0 那就是没有按下 接地了 那就一定是0
+    //错误 强转和直接用错误的类型赋值一样 把uint32赋值给 uint16会导致32位数据被截断 强转也会 
+
+    // pressed = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);//按下是0 0!=0是0 所以pressed就是字面意思
+static bool last_press = false , pressed = false;
+static bool cur_presse = false;
+static uint32_t change_time = 0;
+
+cur_presse = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);
+
+    if(cur_presse != last_press){//对着答案反推很容易 只要状态不改变就不需要重新赋值change 然后只需要判断change是否持续10ms没有change就好了  但是确实想不到
+        last_press = cur_presse;
+        change_time = millis();
+    }
+
+    if((millis() - change_time) > 10U){
+        pressed = cur_presse;
+    }
+
+    return pressed;
+}
+
+
+// uint8_t Btn_state(){
+//     pressed = erace_Bounce();
+
+//     if(pressed){
+//         if((millis() - b_cur_t) > 600U){
+//             b_cur_t = millis();
+//             event = llong;
+//         }else{
+//             event = sshort;
+//         }
+//     }else{
+//         event = release;
+//     }
+//     return event;
+// }
+
+
+uint32_t cur_t = 0;
 
 void T_led(){
     if((millis() - cur_t) >= 500U){
@@ -156,21 +139,27 @@ void LED_State(){
 
     switch(state){
         case none:
-        T_led();
+        //    T_led();
+           DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
         break;
 
         case sshort:
-            DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+            //   DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14); 
+            DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
         // T_led();
         break;
 
         case llong:
-            DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14); 
-            // T_led();
+            // DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
+             T_led();
+        break;
+
+        case release:
+        // DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+            event = none;
         break;
     }    
 }
-//git commit -m "目前试图用一个变量同时表示按下和状态两种不同类型的意义，导致冲突；关于 volatile，只要可能有主循环以外的因素改变这个数值，就需要 volatile"
 
 
 
@@ -182,9 +171,13 @@ int main(void)
     LED_Init();
     Btn_Init();
     
-
-    cur_t = millis();
+ 
     while (1) {
-        LED_State();
+       if(erace_Bounce()){
+         DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+       }
+       else{
+         DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
+       }
     }
 }
