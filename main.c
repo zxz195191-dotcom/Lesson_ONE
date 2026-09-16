@@ -66,7 +66,7 @@ void Btn_Init(){
     );
 }
 
-bool pressed = 0;
+bool pressed = false;
 
 typedef enum {
     none = 0,
@@ -89,7 +89,8 @@ bool erace_Bounce(){
 
     // pressed = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);//按下是0 0!=0是0 所以pressed就是字面意思
 static bool last_press = false , pressed = false;
-static bool cur_presse = false;
+// static bool cur_presse = false;错误
+bool cur_presse = false;
 static uint32_t change_time = 0;
 
 cur_presse = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);
@@ -99,7 +100,7 @@ cur_presse = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);
         change_time = millis();
     }
 
-    if((millis() - change_time) > 10U){
+    if((millis() - change_time) >= 10U){
         pressed = cur_presse;
     }
 
@@ -107,21 +108,50 @@ cur_presse = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);
 }
 
 
-// uint8_t Btn_state(){
-//     pressed = erace_Bounce();
+Btn_Event Btn_state(){
+    static bool pre_press = false,pressing = false;
+    // uint32_t press_start_time = 0;错误
+    static uint32_t press_start_time = 0;
 
-//     if(pressed){
-//         if((millis() - b_cur_t) > 600U){
-//             b_cur_t = millis();
-//             event = llong;
-//         }else{
-//             event = sshort;
-//         }
-//     }else{
-//         event = release;
-//     }
-//     return event;
-// }
+    //event = none; 不能加这个 加了程序就 长按没有反应<---错误
+    event = none;
+
+    pressed = erace_Bounce();
+
+    if(pressed == 0 && pre_press == 0){
+        event = none;
+    }
+
+    if(pressed == 1 && pre_press == 0){
+        pre_press = pressed;
+        press_start_time = millis();
+        pressing = false;
+    }
+
+    if(pressed == 1 && pre_press == 1){
+        if(((millis() - press_start_time) >= 600U) && !pressing){
+            // press_start_time = millis();错误
+            event = llong;
+            pressing = true;
+        }
+    }
+
+    if(pressed == 0 && pre_press == 1){
+        pre_press = pressed;
+        if(pressing){
+            pressing = false;
+            event = none;            
+        }else{
+            event = sshort;
+        }
+        // if(event == sshort){
+        //     event = none;
+        //     return sshort;
+        // }
+    }
+
+    return event;
+}
 
 
 uint32_t cur_t = 0;
@@ -141,6 +171,7 @@ void LED_State(){
         case none:
         //    T_led();
            DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+            // DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);        
         break;
 
         case sshort:
@@ -173,11 +204,6 @@ int main(void)
     
  
     while (1) {
-       if(erace_Bounce()){
-         DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
-       }
-       else{
-         DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
-       }
+        LED_State();
     }
 }
