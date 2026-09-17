@@ -107,11 +107,16 @@ cur_presse = ((DL_GPIO_readPins(GPIOB, DL_GPIO_PIN_21) & DL_GPIO_PIN_21) == 0U);
     return pressed;
 }
 
+volatile uint32_t lllong,ssshort,nnone;
 
 Btn_Event Btn_state(){
     static bool pre_press = false,pressing = false;
     // uint32_t press_start_time = 0;错误
     static uint32_t press_start_time = 0;
+
+                // static uint8_t lllong = 0 ;
+                //             static uint8_t ssshort = 0 ; 依旧volatile
+            
 
     //event = none; 不能加这个 加了程序就 长按没有反应<---错误
     event = none;
@@ -165,31 +170,42 @@ void T_led(){
 
 
 void LED_State(){
-    uint8_t state = Btn_state();
+   // uint8_t state = Btn_state();
+    Btn_Event e = Btn_state();
 
-    switch(state){
-        case none:
-        //    T_led();
-           DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
-            // DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);        
-        break;
+    if(e == llong){
+        lllong++;
+    }
+    if(e == sshort){
+        ssshort++;
+    }
+    if(e == none){
+        nnone++;
+    }
 
-        case sshort:
-            //   DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14); 
-            DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
-        // T_led();
-        break;
+    // switch(state){
+    //     case none:
+    //     //    T_led();
+    //        DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+    //         // DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);        
+    //     break;
 
-        case llong:
-            // DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
-             T_led();
-        break;
+    //     case sshort:
+    //         //   DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14); 
+    //         DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
+    //     // T_led();
+    //     break;
 
-        case release:
-        // DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
-            event = none;
-        break;
-    }    
+    //     case llong:
+    //         // DL_GPIO_clearPins(GPIOB, DL_GPIO_PIN_14);
+    //          T_led();
+    //     break;
+
+    //     case release:
+    //     // DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+    //         event = none;
+    //     break;
+    // }    
 }
 
 
